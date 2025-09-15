@@ -1,0 +1,55 @@
+name: Build & Publish Blogger Sitemap
+
+on:
+  workflow_dispatch:
+    inputs:
+      blog_base:
+        description: "Blogspot base URL (vd: https://weirdwildly.blogspot.com)"
+        required: false
+        default: "https://weirdwildly.blogspot.com"
+  schedule:
+    - cron: "17 2 * * *"   # ≈ 09:17 giờ VN (UTC+7)
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Generate sitemap files
+        env:
+          BLOG_BASE: ${{ github.event.inputs.blog_base || 'https://weirdwildly.blogspot.com' }}
+          PAGES_BASE_URL: https://weirdwildly.github.io/blogspot-sitemap
+        run: |
+          python fetch_blogger_sitemap.py
+          ls -lah
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sitemap*.xml
+          git diff --cached --quiet || git commit -m "Auto-update sitemap"
+          git push
+
+      - name: Ping Google (sitemap.xml OR sitemap-index.xml)
+        run: |
+          BASE="https://weirdwildly.github.io/blogspot-sitemap"
+          if [ -f "sitemap-index.xml" ]; then
+            URL="$BASE/sitemap-index.xml"
+          else
+            URL="$BASE/sitemap.xml"
+          fi
+          echo "Pinging Google with $URL"
+          curl -s "https://www.google.com/ping?sitemap=${URL}" || true
